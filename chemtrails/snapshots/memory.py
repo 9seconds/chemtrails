@@ -8,7 +8,7 @@ import tracemalloc
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class ProcFS:
+class Proc:
     rss: int
     pss: int
     pss_anon: int
@@ -28,7 +28,7 @@ class ProcFS:
     private_hugetlb: int
     swap: int
     swappss: int
-    locked: int
+    locked: int  # noqa: CCE001
 
     RE = re.compile(
         r"""
@@ -48,7 +48,7 @@ class ProcFS:
         return self.shared_clean + self.shared_dirty
 
     @classmethod
-    def read(cls) -> ProcFS:
+    def create(cls) -> Proc:
         data: dict[str, int] = {}
 
         with pathlib.Path("/proc/self/smaps_rollup").open() as fp:
@@ -66,24 +66,47 @@ class ProcFS:
 
 @dataclasses.dataclass(frozen=True)
 class GCStats:
-    generations: list[dict[str, int]] = dataclasses.field(
-        init=False, default_factory=gc.get_stats
-    )
-    freeze_count: int = dataclasses.field(
-        init=False, default_factory=gc.get_freeze_count
-    )
-    garbage: str = dataclasses.field(
-        init=False, default_factory=lambda: repr(gc.garbage)
-    )
+    generations: list[dict[str, int]]
+    freeze_count: int
+    garbage: str | None
+
+    @classmethod
+    def create(cls) -> GCStats:
+        return cls(
+            generations=gc.get_stats(),
+            freeze_count=gc.get_freeze_count(),
+            garbage=repr(gc.garbage) if gc.garbage else None,
+        )
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class Snapshot:
-    snapshot: tracemalloc.Snapshot | None = dataclasses.field(
-        init=False,
-        default_factory=lambda: (
-            tracemalloc.take_snapshot() if tracemalloc.is_tracing() else None
-        ),
-    )
-    procfs: ProcFS = dataclasses.field(init=False, default_factory=ProcFS.read)
-    gc_stats: GCStats = dataclasses.field(init=False, default_factory=GCStats)
+    snapshot: tracemalloc.Snapshot | None
+    proc: Proc
+    gc_stats: GCStats
+
+    @property
+    def rss(self) -> int:
+        return self.proc.rss
+
+    @property
+    def pss(self) -> int:
+        return self.proc.pss
+
+    @property
+    def uss(self) -> int:
+        return self.proc.uss
+
+    @property
+    def swap(self) -> int:  # noqa: FNE002
+        return self.proc.swap
+
+    @classmethod
+    def create(cls) -> Snapshot:
+        snapshot = None
+        if tracemalloc.is_tracing():
+            snapshot = tracemalloc.take_snapshot()
+
+        return cls(
+            snapshot=snapshot, proc=Proc.create(), gc_stats=GCStats.create()
+        )

@@ -59,12 +59,16 @@ target-version = ["py312"]
 [tool.flake8]
 max-line-length = 80
 exclude = [
-  '.git',
-  '__pycache__'
+  ".git",
+  "__pycache__"
 ]
 literal-inline-quotes = "double"
 literal-multiline-quotes = "double"
 enable-extensions = "G"
+max-cognitive-complexity = 10
+ignore = [
+  "IND101"
+]
 
 [tool.isort]
 profile = "black"

@@ -10,80 +10,12 @@ import re
 import typing as t
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class ProcFS:
-    # I/O counter: chars read
-    # The number of bytes which this task has caused to be read from storage.
-    # This is simply the sum of bytes which this process passed to read()
-    # and pread(). It includes things like tty IO and it is unaffected by
-    # whether or not actual physical disk IO was required (the read might
-    # have been satisfied from pagecache).
-    rchar: int
-    # I/O counter: chars written
-    # The number of bytes which this task has caused, or shall cause to be
-    # written to disk. Similar caveats apply here as with rchar.
-    wchar: int
-    # I/O counter: read syscalls
-    # Attempt to count the number of read I/O operations, i.e. syscalls like
-    # read() and pread().
-    syscr: int
-    # I/O counter: write syscalls
-    # Attempt to count the number of write I/O operations, i.e. syscalls like
-    # write() and pwrite().
-    syscw: int
-    # I/O counter: bytes read
-    # Attempt to count the number of bytes which this process really did
-    # cause to be fetched from the storage layer. Done at the submit_bio()
-    # level, so it is accurate for block-backed filesystems. <please add
-    # status regarding NFS and CIFS at a later time>
-    read_bytes: int
-    # I/O counter: bytes written
-    # Attempt to count the number of bytes which this process caused to be
-    # sent to the storage layer. This is done at page-dirtying time.
-    write_bytes: int
-    # The big inaccuracy here is truncate. If a process writes 1MB to a file
-    # and then deletes the file, it will in fact perform no writeout. But it
-    # will have been accounted as having caused 1MB of write.
-    #
-    # In other words: The number of bytes which this process caused to not
-    # happen, by truncating pagecache. A task can cause "negative" IO too.
-    # If this task truncates some dirty pagecache, some IO which another
-    # task has been accounted for (in its write_bytes) will not be happening.
-    # We _could_ just subtract that from the truncating task's write_bytes,
-    # but there is information loss in doing that.
-    cancelled_write_bytes: int
-
-    @property
-    def io_operations(self) -> int:
-        return self.syscr + self.syscw
-
-    @property
-    def real_write_bytes(self) -> int:
-        return self.write_bytes - self.cancelled_write_bytes
-
-    @classmethod
-    def read(cls) -> ProcFS:
-        data: dict[str, int] = {}
-
-        with pathlib.Path("/proc/self/io").open() as fp:
-            for line in fp:
-                matcher = re.match(r"(\w+):\s+(\d+)", line)
-                if not matcher:
-                    raise RuntimeError(f"Cannot correctly parse {line}")
-                data[matcher.group(1)] = int(matcher.group(2))
-
-        return cls(**data)
-
-
 OpenFlags = enum.IntFlag(  # type: ignore[misc]
     "OpenFlags",
     {
-        name.replace("O_", ""): (
-            # for some really bizzare reason, O_LARGEFILE is 0 here
-            getattr(os, name)
-            if name != "O_LARGEFILE"
-            else 32768
-        )
+        name.replace("O_", ""):
+        # for some really bizzare reason, O_LARGEFILE is 0 here
+        getattr(os, name) if name != "O_LARGEFILE" else 32768
         for name in dir(os)
         if name.startswith("O_")
     },
@@ -144,11 +76,75 @@ class TCPSocket(Socket):
     state: TCPState
 
 
-dataclasses.dataclass(frozen=True)
-
-
+@dataclasses.dataclass(frozen=True)
 class UDPSocket(Socket):
-    state: TCPState
+    pass
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class Proc:
+    # I/O counter: chars read
+    # The number of bytes which this task has caused to be read from storage.
+    # This is simply the sum of bytes which this process passed to read()
+    # and pread(). It includes things like tty IO and it is unaffected by
+    # whether or not actual physical disk IO was required (the read might
+    # have been satisfied from pagecache).
+    rchar: int
+    # I/O counter: chars written
+    # The number of bytes which this task has caused, or shall cause to be
+    # written to disk. Similar caveats apply here as with rchar.
+    wchar: int
+    # I/O counter: read syscalls
+    # Attempt to count the number of read I/O operations, i.e. syscalls like
+    # read() and pread().
+    syscr: int
+    # I/O counter: write syscalls
+    # Attempt to count the number of write I/O operations, i.e. syscalls like
+    # write() and pwrite().
+    syscw: int
+    # I/O counter: bytes read
+    # Attempt to count the number of bytes which this process really did
+    # cause to be fetched from the storage layer. Done at the submit_bio()
+    # level, so it is accurate for block-backed filesystems. <please add
+    # status regarding NFS and CIFS at a later time>
+    read_bytes: int
+    # I/O counter: bytes written
+    # Attempt to count the number of bytes which this process caused to be
+    # sent to the storage layer. This is done at page-dirtying time.
+    write_bytes: int
+    # The big inaccuracy here is truncate. If a process writes 1MB to a file
+    # and then deletes the file, it will in fact perform no writeout. But it
+    # will have been accounted as having caused 1MB of write.
+    #
+    # In other words: The number of bytes which this process caused to not
+    # happen, by truncating pagecache. A task can cause "negative" IO too.
+    # If this task truncates some dirty pagecache, some IO which another
+    # task has been accounted for (in its write_bytes) will not be happening.
+    # We _could_ just subtract that from the truncating task's write_bytes,
+    # but there is information loss in doing that.
+    cancelled_write_bytes: int
+
+    @property
+    def io_operations(self) -> int:
+        return self.syscr + self.syscw
+
+    @property
+    def real_write_bytes(self) -> int:  # noqa: FNE002
+        return self.write_bytes - self.cancelled_write_bytes
+
+    @classmethod
+    def create(cls) -> Proc:
+        data: dict[str, int] = {}
+
+        with pathlib.Path("/proc/self/io").open() as fp:
+            for line in fp:
+                matcher = re.match(r"(\w+):\s+(\d+)", line)
+                if not matcher:
+                    raise RuntimeError(f"Cannot correctly parse {line}")
+
+                data[matcher.group(1)] = int(matcher.group(2))
+
+        return cls(**data)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -157,12 +153,11 @@ class Snapshot:
     files: dict[pathlib.Path, OpenFlags]
     tcp_sockets: list[TCPSocket]
     udp_sockets: list[UDPSocket]
-
-    procfs: ProcFS = dataclasses.field(init=False, default_factory=ProcFS.read)
+    proc: Proc  # noqa: CCE001
 
     NET_RE = re.compile(
         r"""
-        \s+
+        \s*
         \d+:\s+  # seq number
         (?P<local_ip>[A-F0-9]+):(?P<local_port>[A-F0-9]+)\s+
         (?P<remote_ip>[A-F0-9]+):(?P<remote_port>[A-F0-9]+)\s+
@@ -173,7 +168,7 @@ class Snapshot:
         \S+\s+  # uid
         \S+\s+  # timeout
         (?P<inode>\d+)
-        .*?$    # do not care after
+        .*$    # do not care after
     """,
         re.VERBOSE,
     )
@@ -190,6 +185,7 @@ class Snapshot:
                     matcher = cls.NET_RE.match(line)
                     if not matcher:
                         raise RuntimeError(f"Cannot parse {line} from {path}")
+
                     if matcher.group("inode") in inodes:
                         yield matcher
 
@@ -217,12 +213,13 @@ class Snapshot:
             except FileNotFoundError:
                 continue
 
-            if flags := re.search(r"flags:\s+([0-7]+)", text, re.MULTILINE):
+            if flags := re.search(r"^flags:\s+([0-7]+)", text, re.MULTILINE):
                 files[linkto] = OpenFlags(int(flags.group(1), 8))
 
         return Snapshot(
             fd_count=fd_count,
             files=files,
+            proc=Proc.create(),
             tcp_sockets=[
                 TCPSocket(
                     local_address=Address.parse_procfs(
