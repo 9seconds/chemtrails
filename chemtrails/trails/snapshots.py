@@ -1,26 +1,26 @@
 from __future__ import annotations
 
 import dataclasses
-import datetime
 import enum
 import ipaddress
 import os
 import pathlib
-import pickle
 import socket
 import tracemalloc
 import typing as t
 
 import psutil
 
-import chemtrails.utils as utils
+from chemtrails.trails import base
 
 
 if t.TYPE_CHECKING:
-    import chemtrails.types as tt
+    import uuid
 
+    import typing_extensions as te
 
-VERSION = 1
+    from chemtrails import types as tt
+
 
 LimitName = enum.Enum(  # type: ignore[misc]
     "LimitName",
@@ -62,76 +62,63 @@ SocketStatus = enum.Enum(  # type: ignore[misc]
 )
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class Snapshot:
-    timestamp: datetime.datetime
+@dataclasses.dataclass(kw_only=True)
+class Snapshot(base.Base):
     memory: Memory
     process: Process
     cpu: CPU
     io: IO
+    connections: Connections
     children: dict[tt.Pid, Child]
     threads: t.Optional[dict[tt.Pid, Thread]]
     files: dict[pathlib.Path, OpenFile]
-    connections: Connections
 
     @classmethod
-    def create(cls, proc: psutil.Process) -> Snapshot:
-        with proc.oneshot():
-            try:
-                threads = {
-                    thr.id: Thread(user=thr.user_time, kernel=thr.system_time)
-                    for thr in proc.threads()
-                }
-            except psutil.AccessDenied:
-                threads = None
+    def create(cls, execution_id: uuid.UUID, proc: psutil.Process) -> te.Self:
+        try:
+            threads = {
+                thr.id: Thread(user=thr.user_time, kernel=thr.system_time)
+                for thr in proc.threads()
+            }
+        except psutil.AccessDenied:
+            threads = None
 
-            return cls(
-                timestamp=datetime.datetime.now(datetime.timezone.utc),
-                children={
-                    cproc.pid: Child(
-                        name=cproc.name(),
-                        cmdline=cproc.cmdline(),
-                        exe=cproc.exe(),
-                    )
-                    for cproc in proc.children()
-                },
-                threads=threads,
-                files={
-                    pathlib.Path(f_.path): OpenFile(
-                        fd=f_.fd if f_.fd != -1 else None,
-                        flag=OpenFlag(f_.flags)  # type: ignore[attr-defined]
-                        if hasattr(f_, "flags")
-                        else None,
-                    )
-                    for f_ in proc.open_files()
-                },
-                cpu=CPU.create(proc),
-                io=IO.create(proc),
-                memory=Memory.create(proc),
-                process=Process.create(proc),
-                connections=Connections.create(proc),
-            )
-
-    @classmethod
-    def load_from(cls, fileobj: t.BinaryIO) -> Snapshot:
-        with utils.read_zip(fileobj, VERSION) as fp:  # noqa: SIM117
-            with fp.open("data.pickle", mode="r") as dfp:
-                return t.cast(Snapshot, pickle.load(dfp))
-
-    def save_to(self, fileobj: t.BinaryIO) -> None:
-        with utils.write_zip(fileobj, VERSION) as fp:  # noqa: SIM117
-            with fp.open("data.pickle", mode="w") as dfp:
-                pickle.dump(self, file=dfp, protocol=pickle.HIGHEST_PROTOCOL)
+        return cls(
+            execution_id=execution_id,
+            children={
+                cproc.pid: Child(
+                    name=cproc.name(),
+                    cmdline=cproc.cmdline(),
+                    exe=cproc.exe(),
+                )
+                for cproc in proc.children()
+            },
+            threads=threads,
+            files={
+                pathlib.Path(f_.path): OpenFile(
+                    fd=f_.fd if f_.fd != -1 else None,
+                    flag=OpenFlag(f_.flags)  # type: ignore[attr-defined]
+                    if hasattr(f_, "flags")
+                    else None,
+                )
+                for f_ in proc.open_files()
+            },
+            cpu=CPU.create(proc),
+            io=IO.create(proc),
+            memory=Memory.create(proc),
+            process=Process.create(proc),
+            connections=Connections.create(proc),
+        )
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Memory:
     snapshot: t.Optional[tracemalloc.Snapshot]
-    rss: tt.MetricBytes
-    vms: tt.MetricBytes
-    uss: t.Optional[tt.MetricBytes]
-    pss: t.Optional[tt.MetricBytes]
-    swap: t.Optional[tt.MetricBytes]
+    rss: tt.SizeBytes
+    vms: tt.SizeBytes
+    uss: t.Optional[tt.SizeBytes]
+    pss: t.Optional[tt.SizeBytes]
+    swap: t.Optional[tt.SizeBytes]
 
     @classmethod
     def create(cls, proc: psutil.Process) -> Memory:
@@ -153,7 +140,7 @@ class Memory:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Process:
-    nice: tt.MetricNice
+    nice: tt.Nice
     limits: dict[LimitName, LimitValue]
 
     @classmethod
@@ -177,12 +164,12 @@ class Process:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class CPU:
-    user: tt.MetricCPUTime
-    kernel: tt.MetricCPUTime
-    children_user: tt.MetricCPUTime
-    children_kernel: tt.MetricCPUTime
-    iowait: t.Optional[tt.MetricCPUClocks]
-    affinity: t.Optional[list[tt.MetricCPUID]]
+    user: tt.TimeSeconds
+    kernel: tt.TimeSeconds
+    children_user: tt.TimeSeconds
+    children_kernel: tt.TimeSeconds
+    iowait: t.Optional[tt.TimeSeconds]
+    affinity: t.Optional[list[tt.CPUID]]
     num: t.Optional[int]
 
     @classmethod
@@ -208,11 +195,11 @@ class IO:
     read_count: int
     write_count: int
     other_count: t.Optional[int]
-    read_bytes: t.Optional[tt.MetricBytes]
-    write_bytes: t.Optional[tt.MetricBytes]
-    other_bytes: t.Optional[tt.MetricBytes]
-    read_chars: t.Optional[tt.MetricBytes]
-    write_chars: t.Optional[tt.MetricBytes]
+    read_bytes: t.Optional[tt.SizeBytes]
+    write_bytes: t.Optional[tt.SizeBytes]
+    other_bytes: t.Optional[tt.SizeBytes]
+    read_chars: t.Optional[tt.SizeBytes]
+    write_chars: t.Optional[tt.SizeBytes]
 
     @classmethod
     def create(cls, proc: psutil.Process) -> IO:
@@ -256,11 +243,11 @@ class Connections:
                 continue
 
             match (conn.type, conn.family):
-                case [_, socket.AF_UNIX] if conn.laddr:
+                case [_, socket.AF_UNIX]:
                     unix.append(
                         UnixSocket(
                             fd=conn.fd,
-                            type_=conn.type,
+                            type_=socket.SocketKind(conn.type),
                             path=pathlib.Path(
                                 t.cast(str, conn.laddr)
                             ).absolute(),
@@ -312,8 +299,8 @@ class Child:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Thread:
-    user: tt.MetricCPUTime
-    kernel: tt.MetricCPUTime
+    user: tt.TimeSeconds
+    kernel: tt.TimeSeconds
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -324,15 +311,12 @@ class OpenFile:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class NetworkAddress:
-    ip: ipaddress.IPv4Address | ipaddress.IPv6Address
-    port: int
+    ip: tt.NetworkIP
+    port: tt.NetworkPort
 
     @classmethod
     def create(cls, pair: t.Tuple[str, int]) -> NetworkAddress:
-        return cls(
-            ip=ipaddress.ip_address(pair[0]),
-            port=pair[1],
-        )
+        return cls(ip=ipaddress.ip_address(pair[0]), port=pair[1])
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -358,5 +342,5 @@ class TCPSocket(IPSocket):
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class UnixSocket(Socket):
-    type_: int
+    type_: socket.SocketKind
     path: pathlib.Path

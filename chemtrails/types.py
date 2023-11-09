@@ -1,17 +1,31 @@
 from __future__ import annotations
 
+import datetime
+import ipaddress
 import typing as t
+import uuid
 
 
-MetricNice: t.TypeAlias = int
-MetricCPUID: t.TypeAlias = int
-MetricBytes: t.TypeAlias = int
-MetricCPUClocks: t.TypeAlias = int
-MetricCPUTime: t.TypeAlias = float | int
+Nice: t.TypeAlias = int
+CPUID: t.TypeAlias = int
+
+SizeBytes: t.TypeAlias = int
+
+TimeSeconds: t.TypeAlias = int | float
+TimeNanoseconds: t.TypeAlias = TimeSeconds | int
 
 FileDescriptor: t.TypeAlias = int
 Pid: t.TypeAlias = int
 
-JSON: t.TypeAlias = (
-    dict[str, "JSON"] | list["JSON"] | None | int | float | str | bool
-)
+NetworkIP: t.TypeAlias = ipaddress.IPv4Address | ipaddress.IPv6Address
+NetworkPort: t.TypeAlias = int
+
+
+class ArchiveMetadata(t.TypedDict):
+    run_id: uuid.UUID
+    oid: str
+    created_at: datetime.datetime
+    class_: str
+
+
+ClassMetadata: t.TypeAlias = dict[str, t.Any]
