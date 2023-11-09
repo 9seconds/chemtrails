@@ -20,6 +20,8 @@ Pid: t.TypeAlias = int
 NetworkIP: t.TypeAlias = ipaddress.IPv4Address | ipaddress.IPv6Address
 NetworkPort: t.TypeAlias = int
 
+OID: t.TypeAlias = str
+
 
 class ArchiveMetadata(t.TypedDict):
     run_id: uuid.UUID

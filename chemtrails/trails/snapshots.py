@@ -74,7 +74,13 @@ class Snapshot(base.Base):
     files: dict[pathlib.Path, OpenFile]
 
     @classmethod
-    def create(cls, execution_id: uuid.UUID, proc: psutil.Process) -> te.Self:
+    def create(
+        cls,
+        execution_id: uuid.UUID,
+        proc: psutil.Process,
+        *,
+        with_memory_snapshot: bool = True,
+    ) -> te.Self:
         try:
             threads = {
                 thr.id: Thread(user=thr.user_time, kernel=thr.system_time)
@@ -105,7 +111,7 @@ class Snapshot(base.Base):
             },
             cpu=CPU.create(proc),
             io=IO.create(proc),
-            memory=Memory.create(proc),
+            memory=Memory.create(proc, with_snapshot=with_memory_snapshot),
             process=Process.create(proc),
             connections=Connections.create(proc),
         )
@@ -121,11 +127,13 @@ class Memory:
     swap: t.Optional[tt.SizeBytes]
 
     @classmethod
-    def create(cls, proc: psutil.Process) -> Memory:
+    def create(
+        cls, proc: psutil.Process, *, with_snapshot: bool = True
+    ) -> Memory:
         mem_info = proc.memory_full_info()
 
         snapshot = None
-        if tracemalloc.is_tracing():
+        if with_snapshot and tracemalloc.is_tracing():
             snapshot = tracemalloc.take_snapshot()
 
         return cls(

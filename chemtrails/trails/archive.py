@@ -6,10 +6,10 @@ import typing as t
 import zipfile
 
 from chemtrails import exceptions
+from chemtrails import types as tt
 
 
 if t.TYPE_CHECKING:
-    from chemtrails import types as tt
     from chemtrails.trails import base
 
     BaseT = t.TypeVar("BaseT", bound=base.Base)
@@ -23,7 +23,7 @@ FILE_CLASS_METADATA = "class_metadata.json"
 FILE_DATA = "data.pickle"
 
 
-def sniff_archive(
+def sniff(
     source: t.BinaryIO,
 ) -> t.Tuple[int, tt.ArchiveMetadata, tt.ClassMetadata]:
     with zipfile.ZipFile(file=source, mode="r") as zp:
@@ -36,7 +36,7 @@ def sniff_archive(
         with zp.open(FILE_CLASS_METADATA, mode="r") as fp:
             class_metadata = t.cast(tt.ClassMetadata, json.load(fp))
 
-        version = int(zp.read("FILE_VERSION").rstrip().decode("latin1"))
+        version = int(zp.read(FILE_VERSION).rstrip().decode("latin1"))
 
         return version, metadata, class_metadata
 

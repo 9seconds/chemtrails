@@ -18,7 +18,7 @@ if t.TYPE_CHECKING:
     import typing_extensions as te
 
 
-def _generate_id() -> str:
+def _generate_id() -> tt.OID:
     tstamp_part = struct.pack(">Q", time.monotonic_ns())
     random_part = random.randbytes(8)
 
@@ -29,7 +29,7 @@ def _generate_id() -> str:
 class Base:
     execution_id: uuid.UUID
 
-    oid: str = dataclasses.field(init=False, default_factory=_generate_id)
+    oid: tt.OID = dataclasses.field(init=False, default_factory=_generate_id)
     created_at: datetime.datetime = dataclasses.field(
         init=False,
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc),
