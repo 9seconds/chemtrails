@@ -25,9 +25,11 @@ FILE_DATA = "data.pickle"
 
 def sniff(
     source: t.BinaryIO,
+    *,
+    validate: bool = False,
 ) -> t.Tuple[int, tt.ArchiveMetadata, tt.ClassMetadata]:
     with zipfile.ZipFile(file=source, mode="r") as zp:
-        if (badfile := zp.testzip()) is not None:
+        if validate and (badfile := zp.testzip()) is not None:
             raise exceptions.ArchiveBadFileError(badfile)
 
         with zp.open(FILE_METADATA, mode="r") as fp:
