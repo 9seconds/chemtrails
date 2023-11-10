@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextvars
 import dataclasses
+import traceback
 import threading
 import time
 import typing as t
@@ -25,9 +26,14 @@ class TraceDict(dict[t.Hashable, t.Any]):
     pass
 
 
+def _get_source_line() -> tt.TraceID:
+    frame = traceback.extract_stack(limit=3)[0]
+    return f"{frame.filename}:{frame.lineno}"
+
+
 @dataclasses.dataclass()
 class Trace(base.Base):
-    trace_id: str
+    trace_id: tt.TraceID = dataclasses.field(default_factory=_get_source_line)
 
     with_memory_snapshot: bool = dataclasses.field(default=False, kw_only=True)
 

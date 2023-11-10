@@ -21,6 +21,7 @@ NetworkIP: t.TypeAlias = ipaddress.IPv4Address | ipaddress.IPv6Address
 NetworkPort: t.TypeAlias = int
 
 OID: t.TypeAlias = str
+TraceID: t.TypeAlias = str
 
 
 class ArchiveMetadata(t.TypedDict):
