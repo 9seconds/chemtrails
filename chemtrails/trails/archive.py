@@ -52,7 +52,7 @@ def load_object_from(cls: type[BaseT], source: t.BinaryIO) -> BaseT:
 
         with zp.open(FILE_METADATA, mode="r") as fp:
             loaded = t.cast(tt.ArchiveMetadata, json.load(fp))
-            if cls.__name__ != loaded["class_"]:
+            if _get_fqdn(cls) != loaded["class_"]:
                 raise exceptions.ArchiveClassMismatchError(loaded["class_"])
 
         with zp.open(FILE_DATA, mode="r") as fp:
@@ -77,7 +77,7 @@ def save_object_to(target: t.BinaryIO, obj: base.Base) -> None:
                     "execution_id": str(obj.execution_id),
                     "oid": obj.oid,
                     "created_at": obj.created_at.isoformat(),
-                    "class_": obj.__class__.__name__,
+                    "class_": _get_fqdn(obj.__class__),
                 }
             )
             fp.write(dumped.encode("utf-8"))
@@ -88,3 +88,7 @@ def save_object_to(target: t.BinaryIO, obj: base.Base) -> None:
 
         with zp.open(FILE_DATA, mode="w") as fp:
             pickle.dump(obj, file=fp, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def _get_fqdn(cls: type) -> str:
+    return f"{cls.__module__}.{cls.__qualname__}"
