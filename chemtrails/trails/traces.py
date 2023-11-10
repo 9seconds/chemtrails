@@ -45,13 +45,12 @@ class Trace(base.Base):
         init=False,
         default=None,
     )
-    trace_map: TraceMap = dataclasses.field(
-        init=False, default_factory=lambda: TraceMap()
-    )
+    span: Span = dataclasses.field(init=False, default_factory=lambda: Span())
     user: TraceDict = dataclasses.field(init=False, default_factory=TraceDict)
 
     def __post_init__(self) -> None:
-        self.trace_map.oid = self.oid
+        self.span.oid = self.oid
+        self.span.trace_id = self.trace_id
 
     @property
     def class_metadata(self) -> tt.ClassMetadata:
@@ -70,7 +69,7 @@ class Trace(base.Base):
                 with_memory_snapshot=self.with_memory_snapshot,
             )
 
-        self.trace_map.push()
+        self.span.push()
 
         return t.cast(
             t.MutableMapping[t.Hashable, t.Any], weakref.proxy(self.user)
@@ -82,7 +81,7 @@ class Trace(base.Base):
         exc_value: t.Optional[BaseException],
         exc_tb: t.Optional[stdtypes.TracebackType],
     ) -> None:
-        self.trace_map.pop()
+        self.span.pop()
 
         with (proc := psutil.Process()).oneshot():
             self.new_snapshot = snapshots.Snapshot.create(
@@ -93,14 +92,11 @@ class Trace(base.Base):
 
 
 @dataclasses.dataclass(slots=True)
-class TraceMap:
+class Span:
     oid: tt.OID = dataclasses.field(default="")
-    children: list[TraceMap] = dataclasses.field(
-        init=False, default_factory=list
-    )
-    start: tt.TimeNanoseconds = dataclasses.field(
-        init=False, default_factory=time.perf_counter_ns
-    )
+    trace_id: tt.TraceID = dataclasses.field(default="")
+    children: list[Span] = dataclasses.field(init=False, default_factory=list)
+    start: tt.TimeNanoseconds = dataclasses.field(init=False, default=0)
     finish: tt.TimeNanoseconds = dataclasses.field(  # noqa: CCE001
         init=False, default=0
     )
@@ -129,7 +125,11 @@ class TraceMap:
 
         stack.append(self)
 
+        self.start = time.monotonic_ns()
+
     def pop(self) -> None:  # noqa: CCE001
+        self.finish = time.monotonic_ns()
+
         stack = self.get_stack().get()
         if not stack:
             raise RuntimeError("Stack is unexpectecly empty")
@@ -140,12 +140,10 @@ class TraceMap:
                 f"Expect {self.oid} to be on a top of stack, got {obj.oid}"
             )
 
-        self.finish = time.perf_counter_ns()
-
     @classmethod
     def get_stack(cls) -> contextvars.ContextVar[list[te.Self]]:
         if not hasattr(cls.STACK, "stack"):
-            cls.STACK.stack = contextvars.ContextVar("trace_map_stack")
+            cls.STACK.stack = contextvars.ContextVar("trace_spans")
 
         return t.cast(
             contextvars.ContextVar[list],  # type: ignore[type-arg]
