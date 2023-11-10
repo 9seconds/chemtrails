@@ -3,9 +3,11 @@ from __future__ import annotations
 import contextvars
 import dataclasses
 import traceback
+import datetime
 import threading
 import time
 import typing as t
+import math
 import weakref
 
 import psutil
@@ -56,6 +58,7 @@ class Trace(base.Base):
     def class_metadata(self) -> tt.ClassMetadata:
         return {
             "trace_id": self.trace_id,
+            "elapsed": self.span.elapsed.total_seconds(),
         }
 
     def is_completed(self) -> bool:
@@ -111,6 +114,12 @@ class Span:
         finish = self.finish or time.monotonic_ns()
 
         return finish - self.start
+
+    @property
+    def elapsed(self) -> datetime.timedelta:
+        return datetime.timedelta(
+            microseconds=math.ceil(self.elapsed_ns / 1000.0)
+        )
 
     def is_in_progress(self) -> bool:
         return self.finish == 0
