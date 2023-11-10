@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import contextvars
 import dataclasses
-import traceback
 import datetime
+import math
 import threading
 import time
+import traceback
 import typing as t
-import math
 import weakref
 
 import psutil
