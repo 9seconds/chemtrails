@@ -104,8 +104,12 @@ class Span:
     STACK: t.ClassVar[threading.local] = threading.local()
 
     @property
-    def elapsed(self) -> tt.TimeNanoseconds:  # noqa: CCE001
-        finish = time.perf_counter_ns() if not self.finish else self.finish
+    def elapsed_ns(self) -> tt.TimeNanoseconds:
+        if not self.start:
+            return 0
+
+        finish = self.finish or time.monotonic_ns()
+
         return finish - self.start
 
     def is_in_progress(self) -> bool:
