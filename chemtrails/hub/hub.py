@@ -107,7 +107,7 @@ class ThreadingHub(AbstractHub):
 
     def __init__(
         self,
-        output_dir: os.PathLike,
+        output_dir: os.PathLike[str] | pathlib.Path,
         enabled: bool = True,
         *,
         max_size: int = sys.maxsize,
@@ -153,7 +153,7 @@ class ThreadingHub(AbstractHub):
             LOG.warning("Hub %s has dropped a message %s", self.oid, msg.name)
 
     def process_queue(self) -> None:
-        def drain():
+        def drain() -> None:
             try:
                 self.queue.get_nowait()
             except queue.Empty:

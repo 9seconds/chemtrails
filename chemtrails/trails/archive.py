@@ -75,7 +75,7 @@ def load_object_from(cls: type[BaseT], source: t.BinaryIO) -> BaseT:
                 raise exceptions.ArchiveClassMismatchError(loaded["class_"])
 
         with zp.open(FILE_DATA, mode="r") as fp:
-            with pyzstd.ZstdFile(fp, mode="rb") as zfp:
+            with pyzstd.ZstdFile(t.cast(t.BinaryIO, fp), mode="rb") as zfp:
                 return pickle.load(zfp)  # type: ignore[no-any-return]
 
 
@@ -107,6 +107,6 @@ def save_object_to(target: t.BinaryIO, obj: base.Base) -> None:
 
         with zp.open(FILE_DATA, mode="w") as fp:
             with pyzstd.ZstdFile(
-                fp, mode="wb", level_or_option=ZSTD_PARAMS
+                t.cast(t.BinaryIO, fp), mode="wb", level_or_option=ZSTD_PARAMS
             ) as zfp:
                 pickle.dump(obj, file=zfp, protocol=pickle.HIGHEST_PROTOCOL)
