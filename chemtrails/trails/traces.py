@@ -6,7 +6,6 @@ import datetime
 import math
 import threading
 import time
-import traceback
 import typing as t
 import weakref
 
@@ -24,21 +23,15 @@ if t.TYPE_CHECKING:
     from chemtrails import types as tt
 
 
-class TraceDict(dict[t.Hashable, t.Any]):
+class _TraceDict(dict[t.Hashable, t.Any]):
     pass
-
-
-def _get_source_line() -> tt.TraceID:
-    frame = traceback.extract_stack(limit=3)[0]
-    return f"{frame.filename}:{frame.lineno}"
 
 
 @dataclasses.dataclass()
 class Trace(base.Base):
-    trace_id: tt.TraceID = dataclasses.field(default_factory=_get_source_line)
+    trace_id: tt.TraceID
 
-    with_memory_snapshot: bool = dataclasses.field(default=False, kw_only=True)
-
+    with_snapshot: bool = dataclasses.field(default=False, kw_only=True)
     old_snapshot: t.Optional[snapshots.Snapshot] = dataclasses.field(
         init=False,
         default=None,
@@ -48,7 +41,9 @@ class Trace(base.Base):
         default=None,
     )
     span: Span = dataclasses.field(init=False, default_factory=lambda: Span())
-    user: TraceDict = dataclasses.field(init=False, default_factory=TraceDict)
+    user: tt.TraceDict = dataclasses.field(
+        init=False, default_factory=_TraceDict
+    )
 
     def __post_init__(self) -> None:
         self.span.oid = self.oid
@@ -62,21 +57,20 @@ class Trace(base.Base):
         }
 
     def is_completed(self) -> bool:
-        return self.old_snapshot is not None and self.new_snapshot is not None
+        return not self.span.is_in_progress()
 
     def __enter__(self) -> t.MutableMapping[t.Hashable, t.Any]:
-        with (proc := psutil.Process()).oneshot():
-            self.old_snapshot = snapshots.Snapshot.create(
-                self.execution_id,
-                proc,
-                with_memory_snapshot=self.with_memory_snapshot,
-            )
+        if self.with_snapshot:
+            with (proc := psutil.Process()).oneshot():
+                self.old_snapshot = snapshots.Snapshot.create(
+                    self.hub_id, proc
+                )
 
         self.span.push()
 
-        return t.cast(
-            t.MutableMapping[t.Hashable, t.Any], weakref.proxy(self.user)
-        )
+        rv: tt.TraceDict = weakref.proxy(self.user)
+
+        return rv
 
     def __exit__(
         self,
@@ -86,12 +80,11 @@ class Trace(base.Base):
     ) -> None:
         self.span.pop()
 
-        with (proc := psutil.Process()).oneshot():
-            self.new_snapshot = snapshots.Snapshot.create(
-                self.execution_id,
-                proc,
-                with_memory_snapshot=self.with_memory_snapshot,
-            )
+        if self.with_snapshot:
+            with (proc := psutil.Process()).oneshot():
+                self.new_snapshot = snapshots.Snapshot.create(
+                    self.hub_id, proc
+                )
 
 
 @dataclasses.dataclass(slots=True)

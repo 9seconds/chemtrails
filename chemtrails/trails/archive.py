@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import datetime
 import json
 import pickle
 import typing as t
+import uuid
 import zipfile
 
 from chemtrails import exceptions
-from chemtrails import types as tt
+from chemtrails import utils
 
 
 if t.TYPE_CHECKING:
+    from chemtrails import types as tt
     from chemtrails.trails import base
 
     BaseT = t.TypeVar("BaseT", bound=base.Base)
@@ -33,7 +36,14 @@ def sniff(
             raise exceptions.ArchiveBadFileError(badfile)
 
         with zp.open(FILE_METADATA, mode="r") as fp:
-            metadata = t.cast(tt.ArchiveMetadata, json.load(fp))
+            data = json.load(fp)
+
+        metadata: tt.ArchiveMetadata = {
+            "hub_id": uuid.UUID(data["hub_id"]),
+            "created_at": datetime.datetime.fromisoformat(data["created_at"]),
+            "oid": data["oid"],
+            "class_": data["class_"],
+        }
 
         with zp.open(FILE_CLASS_METADATA, mode="r") as fp:
             class_metadata = t.cast(tt.ClassMetadata, json.load(fp))
@@ -54,7 +64,7 @@ def load_object_from(cls: type[BaseT], source: t.BinaryIO) -> BaseT:
 
         with zp.open(FILE_METADATA, mode="r") as fp:
             loaded = t.cast(tt.ArchiveMetadata, json.load(fp))
-            if _get_fqdn(cls) != loaded["class_"]:
+            if utils.get_class_fqn(cls) != loaded["class_"]:
                 raise exceptions.ArchiveClassMismatchError(loaded["class_"])
 
         with zp.open(FILE_DATA, mode="r") as fp:
@@ -76,10 +86,10 @@ def save_object_to(target: t.BinaryIO, obj: base.Base) -> None:
         with zp.open(FILE_METADATA, mode="w") as fp:
             dumped = json.dumps(
                 {
-                    "execution_id": str(obj.execution_id),
+                    "hub_id": str(obj.hub_id),
                     "oid": obj.oid,
                     "created_at": obj.created_at.isoformat(),
-                    "class_": _get_fqdn(obj.__class__),
+                    "class_": utils.get_class_fqn(obj.__class__),
                 }
             )
             fp.write(dumped.encode("utf-8"))
@@ -90,7 +100,3 @@ def save_object_to(target: t.BinaryIO, obj: base.Base) -> None:
 
         with zp.open(FILE_DATA, mode="w") as fp:
             pickle.dump(obj, file=fp, protocol=pickle.HIGHEST_PROTOCOL)
-
-
-def _get_fqdn(cls: type) -> str:
-    return f"{cls.__module__}.{cls.__qualname__}"

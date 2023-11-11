@@ -1,10 +1,6 @@
-from chemtrails.trails.archive import sniff  # noqa: F401
-from chemtrails.trails.snapshots import Snapshot  # noqa: F401
-from chemtrails.trails.traces import Trace  # noqa: F401
+from chemtrails.trails.archive import sniff
+from chemtrails.trails.snapshots import Snapshot
+from chemtrails.trails.traces import Trace
 
 
-__all__ = (
-    "sniff",
-    "Snapshot",
-    "Trace"
-)
+__all__ = ("sniff", "Snapshot", "Trace")

@@ -21,11 +21,14 @@ NetworkIP: t.TypeAlias = ipaddress.IPv4Address | ipaddress.IPv6Address
 NetworkPort: t.TypeAlias = int
 
 OID: t.TypeAlias = str
+HubID: t.TypeAlias = uuid.UUID
 TraceID: t.TypeAlias = str
+
+TraceDict: t.TypeAlias = t.MutableMapping[t.Hashable, t.Any]
 
 
 class ArchiveMetadata(t.TypedDict):
-    run_id: uuid.UUID
+    hub_id: uuid.UUID
     oid: str
     created_at: datetime.datetime
     class_: str

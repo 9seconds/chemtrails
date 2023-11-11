@@ -71,7 +71,8 @@ literal-multiline-quotes = "double"
 enable-extensions = "G"
 max-cognitive-complexity = 10
 ignore = [
-  "IND101"
+  "IND101",
+  "G200"
 ]
 
 [tool.isort]
