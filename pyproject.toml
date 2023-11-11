@@ -12,6 +12,7 @@ packages = [
 [tool.poetry.dependencies]
 python = "^3.10"
 psutil = "^5.9.6"
+pyzstd = "^0.15.9"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.10.1"
@@ -72,7 +73,8 @@ enable-extensions = "G"
 max-cognitive-complexity = 10
 ignore = [
   "IND101",
-  "G200"
+  "G200",
+  "SIM117"
 ]
 
 [tool.isort]

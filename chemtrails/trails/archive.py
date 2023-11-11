@@ -7,6 +7,8 @@ import typing as t
 import uuid
 import zipfile
 
+import pyzstd
+
 from chemtrails import exceptions
 from chemtrails import utils
 
@@ -24,6 +26,11 @@ FILE_VERSION = "version.txt"
 FILE_METADATA = "metadata.json"
 FILE_CLASS_METADATA = "class_metadata.json"
 FILE_DATA = "data.pickle"
+
+ZSTD_PARAMS = {
+    pyzstd.CParameter.compressionLevel: 3,
+    pyzstd.CParameter.nbWorkers: 0,
+}
 
 
 def sniff(
@@ -68,15 +75,15 @@ def load_object_from(cls: type[BaseT], source: t.BinaryIO) -> BaseT:
                 raise exceptions.ArchiveClassMismatchError(loaded["class_"])
 
         with zp.open(FILE_DATA, mode="r") as fp:
-            return pickle.load(fp)  # type: ignore[no-any-return]
+            with pyzstd.ZstdFile(fp, mode="rb") as zfp:
+                return pickle.load(zfp)  # type: ignore[no-any-return]
 
 
 def save_object_to(target: t.BinaryIO, obj: base.Base) -> None:
     archive = zipfile.ZipFile(
-        file=target,
+        target,
         mode="w",
-        compression=zipfile.ZIP_BZIP2,
-        compresslevel=9,
+        compression=zipfile.ZIP_STORED,
     )
 
     with archive as zp:
@@ -99,4 +106,7 @@ def save_object_to(target: t.BinaryIO, obj: base.Base) -> None:
             fp.write(dumped.encode("utf-8"))
 
         with zp.open(FILE_DATA, mode="w") as fp:
-            pickle.dump(obj, file=fp, protocol=pickle.HIGHEST_PROTOCOL)
+            with pyzstd.ZstdFile(
+                fp, mode="wb", level_or_option=ZSTD_PARAMS
+            ) as zfp:
+                pickle.dump(obj, file=zfp, protocol=pickle.HIGHEST_PROTOCOL)
