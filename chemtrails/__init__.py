@@ -1,5 +1,6 @@
 import atexit
 import contextlib
+import functools
 import pathlib
 import sys
 import typing as t
@@ -22,11 +23,16 @@ __all__ = (
     "take_snapshot",
     "take_snapshot_each",
     "trace",
+    "traced",
     "AbstractHub",
     "Snapshot",
     "ThreadingHub",
     "Trace",
 )
+
+
+P = t.ParamSpec("P")  # noqa: VNE001
+T = t.TypeVar("T")
 
 
 Hub = ThreadingHub(pathlib.Path(""), False)
@@ -60,6 +66,22 @@ def disable() -> None:
 
 def take_snapshot() -> None:
     Hub.take_snapshot()
+
+
+def traced(
+    trace_id: t.Optional[tt.TraceID] = None, with_snapshot: bool = False
+) -> t.Callable[[t.Callable[P, T]], t.Callable[P, T]]:
+    def outer_decorator(func: t.Callable[P, T]) -> t.Callable[P, T]:
+        trace_id_ = trace_id if trace_id is not None else func.__name__
+
+        @functools.wraps(func)
+        def inner_decorator(*args: P.args, **kwargs: P.kwargs) -> T:
+            with trace(trace_id_, with_snapshot):
+                return func(*args, **kwargs)
+
+        return inner_decorator
+
+    return outer_decorator
 
 
 def trace(
