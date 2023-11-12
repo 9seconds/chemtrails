@@ -5,7 +5,6 @@ import concurrent.futures
 import contextlib
 import logging
 import pathlib
-import queue
 import sys
 import threading
 import typing as t
@@ -102,15 +101,14 @@ class AbstractHub(metaclass=abc.ABCMeta):
 class ThreadingHub(AbstractHub):
     output_dir: pathlib.Path
     worker_pool: concurrent.futures.ThreadPoolExecutor
-    mediator: threading.Thread
-    queue: queue.Queue[base.Base]
+    semaphore: threading.Semaphore
 
     def __init__(
         self,
         output_dir: os.PathLike[str] | pathlib.Path,
         enabled: bool = True,
         *,
-        max_size: int = sys.maxsize,
+        in_progress_limit: int = sys.maxsize,
         num_workers: t.Optional[int] = None,
     ) -> None:
         super().__init__(enabled)
@@ -121,71 +119,42 @@ class ThreadingHub(AbstractHub):
             raise ValueError(f"{output_dir} is not a directory")
 
         self.output_dir = output_dir
-        self.queue = queue.Queue(max_size)
+        self.semaphore = threading.BoundedSemaphore(in_progress_limit)
         self.worker_pool = concurrent.futures.ThreadPoolExecutor(
             max_workers=num_workers, thread_name_prefix="chemtrails_worker"
         )
 
-        self.mediator = threading.Thread(
-            target=self.process_queue,
-            name="chemtrails_worker_mediator",
-            daemon=True,
-        )
-        self.mediator.start()
-
     def shutdown(self) -> None:
         super().shutdown()
-
-        self.mediator.join()
-        self.queue.join()
         self.worker_pool.shutdown()
 
         LOG.debug("Hub %s has been shut down", self.oid)
 
-    def send_object(self, msg: base.Base) -> None:
+    def send_object(self, obj: base.Base) -> None:
         if self.event_closed.is_set():
-            LOG.warning("Hub %s has dropped a message %s", self.oid, msg.name)
+            LOG.warning(
+                "Hub %s has dropped a message %s because it is closing",
+                self.oid,
+                obj.name,
+            )
             return
 
+        if not self.semaphore.acquire(blocking=False):
+            LOG.warning(
+                "Hub %s has dropped a message %s because of task in "
+                "progress limit",
+                self.oid,
+                obj.name,
+            )
+
         try:
-            self.queue.put_nowait(msg)
-        except queue.Full:
-            LOG.warning("Hub %s has dropped a message %s", self.oid, msg.name)
-
-    def process_queue(self) -> None:
-        def drain() -> None:
-            try:
-                self.queue.get_nowait()
-            except queue.Empty:
-                return
-            else:
-                self.queue.task_done()
-
-        with contextlib.ExitStack() as stack:
-            stack.callback(drain)
-
-            while True:
-                try:
-                    obj = self.queue.get(timeout=0.1)
-                except queue.Empty:
-                    if not self.event_closed.wait(0.01):
-                        continue
-
-                    LOG.debug(
-                        "Mediator thread of %s hub has finished", self.oid
-                    )
-                    return
-
-                try:
-                    self.worker_pool.submit(self.process_object, obj)
-                except RuntimeError as exc:
-                    LOG.warning(
-                        "Cannot place a task %s to a worker pool: %s. Stop",
-                        obj.name,
-                        exc,
-                    )
-                    self.event_closed.set()
-                    self.queue.task_done()
+            self.worker_pool.submit(self.process_object, obj)
+        except RuntimeError as exc:
+            LOG.warning(
+                "Hub %s is closing because of worker pool: %s", self.oid, exc
+            )
+            self.event_closed.set()
+            self.semaphore.release()
 
     def process_object(self, msg: base.Base) -> None:
         try:
@@ -196,7 +165,8 @@ class ThreadingHub(AbstractHub):
                 "Hub %s could not save object %s: %s", self.oid, msg.name, exc
             )
         finally:
-            self.queue.task_done()
+            if not self.event_closed.is_set():
+                self.semaphore.release()
 
     def get_object_storage(self, msg: base.Base) -> t.BinaryIO:
         match msg:

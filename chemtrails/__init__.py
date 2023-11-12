@@ -36,14 +36,17 @@ atexit.register(lambda: Hub.shutdown())
 def configure_default_hub(
     output_dir: pathlib.Path,
     *,
-    max_size: int = sys.maxsize,
+    in_progress_limit: int = sys.maxsize,
     num_workers: int | None = None,
 ) -> None:
     global Hub
 
     Hub.shutdown()
     Hub = ThreadingHub(
-        output_dir, True, max_size=max_size, num_workers=num_workers
+        output_dir,
+        True,
+        in_progress_limit=in_progress_limit,
+        num_workers=num_workers,
     )
 
 
