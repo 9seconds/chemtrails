@@ -9,6 +9,9 @@ packages = [
   { include = "chemtrails" }
 ]
 
+[tool.poetry.scripts]
+chemtrails = "chemtrails.cli:main"
+
 [tool.poetry.dependencies]
 python = "^3.10"
 psutil = "^5.9.6"

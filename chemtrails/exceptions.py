@@ -22,3 +22,10 @@ class ArchiveUnsupportedVersionError(ArchiveError, ValueError):
 class ArchiveClassMismatchError(ArchiveError, ValueError):
     def __init__(self, name: str) -> None:
         super().__init__(f"Unexpected class name {name}")
+
+
+class ArchiveWrongObjectError(ArchiveError, ValueError):
+    def __init__(self, expected: type, got: type) -> None:
+        super().__init__(
+            f"Expected {expected.__name__} class, found {got.__name__}"
+        )

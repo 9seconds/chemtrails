@@ -70,13 +70,19 @@ def load_object_from(cls: type[BaseT], source: t.BinaryIO) -> BaseT:
             raise exceptions.ArchiveUnsupportedVersionError(read_version)
 
         with zp.open(FILE_METADATA, mode="r") as fp:
-            loaded = t.cast(tt.ArchiveMetadata, json.load(fp))
+            loaded: tt.ArchiveMetadata = json.load(fp)
             if utils.get_class_fqn(cls) != loaded["class_"]:
                 raise exceptions.ArchiveClassMismatchError(loaded["class_"])
 
         with zp.open(FILE_DATA, mode="r") as fp:
             with pyzstd.ZstdFile(t.cast(t.BinaryIO, fp), mode="rb") as zfp:
-                return pickle.load(zfp)  # type: ignore[no-any-return]
+                obj: BaseT = pickle.load(zfp)
+                if not isinstance(obj, cls):
+                    raise exceptions.ArchiveWrongObjectError(
+                        obj.__class__, cls
+                    )
+
+                return obj
 
 
 def save_object_to(target: t.BinaryIO, obj: base.Base) -> None:
